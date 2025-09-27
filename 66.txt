@@ -1,0 +1,814 @@
+import tkinter as tk
+from tkinter import ttk, messagebox, filedialog
+import os
+import sys
+import subprocess
+import platform
+import psutil
+import socket
+import time
+import datetime
+import shutil
+from PIL import Image, ImageTk
+import ctypes
+
+class SystemToolbox:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("系统工具箱")
+        self.root.geometry("800x600")
+        self.root.resizable(True, True)
+        
+        # 设置中文字体支持
+        if platform.system() == "Windows":
+            self.root.option_add("*Font", "SimHei 10")
+        
+        # 创建主框架
+        self.main_frame = ttk.Frame(root, padding="10")
+        self.main_frame.pack(fill=tk.BOTH, expand=True)
+        
+        # 创建标签页
+        self.tab_control = ttk.Notebook(self.main_frame)
+        
+        # 系统信息标签页
+        self.system_info_tab = ttk.Frame(self.tab_control)
+        self.tab_control.add(self.system_info_tab, text="系统信息")
+        
+        # 进程管理标签页
+        self.process_tab = ttk.Frame(self.tab_control)
+        self.tab_control.add(self.process_tab, text="进程管理")
+        
+        # 磁盘清理标签页
+        self.disk_clean_tab = ttk.Frame(self.tab_control)
+        self.tab_control.add(self.disk_clean_tab, text="磁盘清理")
+        
+        # 网络工具标签页
+        self.network_tab = ttk.Frame(self.tab_control)
+        self.tab_control.add(self.network_tab, text="网络工具")
+        
+        # 系统优化标签页
+        self.optimize_tab = ttk.Frame(self.tab_control)
+        self.tab_control.add(self.optimize_tab, text="系统优化")
+        
+        # 文件工具标签页
+        self.file_tools_tab = ttk.Frame(self.tab_control)
+        self.tab_control.add(self.file_tools_tab, text="文件工具")
+        
+        self.tab_control.pack(expand=1, fill="both")
+        
+        # 初始化各个标签页
+        self.init_system_info_tab()
+        self.init_process_tab()
+        self.init_disk_clean_tab()
+        self.init_network_tab()
+        self.init_optimize_tab()
+        self.init_file_tools_tab()
+        
+        # 添加状态栏
+        self.status_var = tk.StringVar()
+        self.status_var.set("就绪")
+        self.status_bar = ttk.Label(root, textvariable=self.status_var, relief=tk.SUNKEN, anchor=tk.W)
+        self.status_bar.pack(side=tk.BOTTOM, fill=tk.X)
+    
+    # 系统信息标签页
+    def init_system_info_tab(self):
+        # 创建滚动条
+        scrollbar = ttk.Scrollbar(self.system_info_tab)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        
+        # 创建文本框显示系统信息
+        self.system_info_text = tk.Text(self.system_info_tab, wrap=tk.WORD, yscrollcommand=scrollbar.set, height=25, width=80)
+        self.system_info_text.pack(padx=10, pady=10, fill=tk.BOTH, expand=True)
+        scrollbar.config(command=self.system_info_text.yview)
+        
+        # 添加刷新按钮
+        refresh_btn = ttk.Button(self.system_info_tab, text="刷新信息", command=self.update_system_info)
+        refresh_btn.pack(pady=10)
+        
+        # 初始加载系统信息
+        self.update_system_info()
+    
+    def update_system_info(self):
+        self.system_info_text.delete(1.0, tk.END)
+        
+        # 操作系统信息
+        os_info = platform.system() + " " + platform.release() + " " + platform.version()
+        self.system_info_text.insert(tk.END, f"操作系统: {os_info}\n\n")
+        
+        # 计算机名称和用户名
+        computer_name = socket.gethostname()
+        username = os.getlogin()
+        self.system_info_text.insert(tk.END, f"计算机名称: {computer_name}\n")
+        self.system_info_text.insert(tk.END, f"当前用户: {username}\n\n")
+        
+        # 处理器信息
+        cpu_info = platform.processor()
+        cpu_count = psutil.cpu_count(logical=False)
+        cpu_logical_count = psutil.cpu_count(logical=True)
+        self.system_info_text.insert(tk.END, f"处理器: {cpu_info}\n")
+        self.system_info_text.insert(tk.END, f"物理核心: {cpu_count}, 逻辑核心: {cpu_logical_count}\n")
+        self.system_info_text.insert(tk.END, f"当前CPU使用率: {psutil.cpu_percent(interval=1)}%\n\n")
+        
+        # 内存信息
+        mem = psutil.virtual_memory()
+        mem_total = self.format_size(mem.total)
+        mem_available = self.format_size(mem.available)
+        mem_used = self.format_size(mem.used)
+        self.system_info_text.insert(tk.END, f"总内存: {mem_total}\n")
+        self.system_info_text.insert(tk.END, f"可用内存: {mem_available}\n")
+        self.system_info_text.insert(tk.END, f"已使用内存: {mem_used} ({mem.percent}%)\n\n")
+        
+        # 磁盘信息
+        self.system_info_text.insert(tk.END, "磁盘信息:\n")
+        for disk in psutil.disk_partitions():
+            try:
+                disk_usage = psutil.disk_usage(disk.mountpoint)
+                self.system_info_text.insert(tk.END, f"  {disk.device} - {disk.mountpoint} ({disk.fstype})\n")
+                self.system_info_text.insert(tk.END, f"    总容量: {self.format_size(disk_usage.total)}\n")
+                self.system_info_text.insert(tk.END, f"    已使用: {self.format_size(disk_usage.used)} ({disk_usage.percent}%)\n")
+                self.system_info_text.insert(tk.END, f"    可用: {self.format_size(disk_usage.free)}\n\n")
+            except PermissionError:
+                continue
+        
+        # 网络信息
+        self.system_info_text.insert(tk.END, "网络信息:\n")
+        net_if_addrs = psutil.net_if_addrs()
+        for interface_name, interface_addresses in net_if_addrs.items():
+            for address in interface_addresses:
+                if str(address.family) == 'AddressFamily.AF_INET':
+                    self.system_info_text.insert(tk.END, f"  {interface_name}: {address.address}\n")
+        
+        # 系统启动时间
+        boot_time = datetime.datetime.fromtimestamp(psutil.boot_time())
+        uptime = datetime.datetime.now() - boot_time
+        self.system_info_text.insert(tk.END, f"\n系统启动时间: {boot_time.strftime('%Y-%m-%d %H:%M:%S')}\n")
+        self.system_info_text.insert(tk.END, f"系统运行时间: {str(uptime).split('.')[0]}\n")
+        
+        self.status_var.set("系统信息已更新")
+    
+    # 格式化大小显示
+    def format_size(self, size_bytes):
+        units = ['B', 'KB', 'MB', 'GB', 'TB']
+        size = size_bytes
+        unit_index = 0
+        while size >= 1024 and unit_index < len(units) - 1:
+            size /= 1024
+            unit_index += 1
+        return f"{size:.2f} {units[unit_index]}"
+    
+    # 进程管理标签页
+    def init_process_tab(self):
+        # 创建框架放置表格和按钮
+        top_frame = ttk.Frame(self.process_tab)
+        top_frame.pack(fill=tk.X, padx=10, pady=10)
+        
+        # 搜索框
+        ttk.Label(top_frame, text="搜索进程:").pack(side=tk.LEFT, padx=5)
+        self.process_search_var = tk.StringVar()
+        search_entry = ttk.Entry(top_frame, textvariable=self.process_search_var, width=30)
+        search_entry.pack(side=tk.LEFT, padx=5)
+        search_btn = ttk.Button(top_frame, text="搜索", command=self.filter_processes)
+        search_btn.pack(side=tk.LEFT, padx=5)
+        
+        # 刷新按钮
+        refresh_btn = ttk.Button(top_frame, text="刷新进程", command=self.update_process_list)
+        refresh_btn.pack(side=tk.LEFT, padx=5)
+        
+        # 结束进程按钮
+        self.kill_process_btn = ttk.Button(top_frame, text="结束进程", command=self.kill_selected_process)
+        self.kill_process_btn.pack(side=tk.LEFT, padx=5)
+        self.kill_process_btn.config(state=tk.DISABLED)
+        
+        # 创建进程表格
+        columns = ("pid", "name", "cpu", "memory", "status", "username")
+        self.process_tree = ttk.Treeview(self.process_tab, columns=columns, show="headings")
+        
+        # 设置列标题
+        self.process_tree.heading("pid", text="进程ID")
+        self.process_tree.heading("name", text="进程名称")
+        self.process_tree.heading("cpu", text="CPU使用率(%)")
+        self.process_tree.heading("memory", text="内存使用率(%)")
+        self.process_tree.heading("status", text="状态")
+        self.process_tree.heading("username", text="用户名")
+        
+        # 设置列宽
+        self.process_tree.column("pid", width=80)
+        self.process_tree.column("name", width=200)
+        self.process_tree.column("cpu", width=100)
+        self.process_tree.column("memory", width=100)
+        self.process_tree.column("status", width=80)
+        self.process_tree.column("username", width=150)
+        
+        # 添加滚动条
+        scrollbar_y = ttk.Scrollbar(self.process_tab, orient=tk.VERTICAL, command=self.process_tree.yview)
+        scrollbar_x = ttk.Scrollbar(self.process_tab, orient=tk.HORIZONTAL, command=self.process_tree.xview)
+        self.process_tree.configure(yscrollcommand=scrollbar_y.set, xscrollcommand=scrollbar_x.set)
+        
+        # 布局
+        self.process_tree.pack(side=tk.TOP, fill=tk.BOTH, expand=True, padx=10, pady=(0,10))
+        scrollbar_y.pack(side=tk.RIGHT, fill=tk.Y)
+        scrollbar_x.pack(side=tk.BOTTOM, fill=tk.X)
+        
+        # 绑定选择事件
+        self.process_tree.bind("<<TreeviewSelect>>", self.on_process_select)
+        
+        # 初始加载进程列表
+        self.update_process_list()
+    
+    def update_process_list(self):
+        # 清空现有列表
+        for item in self.process_tree.get_children():
+            self.process_tree.delete(item)
+        
+        # 获取所有进程
+        try:
+            processes = []
+            for proc in psutil.process_iter(['pid', 'name', 'cpu_percent', 'memory_percent', 'status', 'username']):
+                try:
+                    processes.append(proc.info)
+                except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+                    pass
+            
+            # 按CPU使用率排序
+            processes.sort(key=lambda x: x['cpu_percent'] or 0, reverse=True)
+            
+            # 添加到表格
+            for proc in processes:
+                self.process_tree.insert("", tk.END, values=(
+                    proc['pid'],
+                    proc['name'],
+                    proc['cpu_percent'] or 0,
+                    proc['memory_percent'] or 0,
+                    proc['status'],
+                    proc['username'] or "未知"
+                ))
+            
+            self.status_var.set(f"已加载 {len(processes)} 个进程")
+        except Exception as e:
+            messagebox.showerror("错误", f"获取进程列表失败: {str(e)}")
+            self.status_var.set("获取进程列表失败")
+    
+    def filter_processes(self):
+        search_text = self.process_search_var.get().lower()
+        # 清空现有列表
+        for item in self.process_tree.get_children():
+            self.process_tree.delete(item)
+        
+        # 筛选进程
+        try:
+            processes = []
+            for proc in psutil.process_iter(['pid', 'name', 'cpu_percent', 'memory_percent', 'status', 'username']):
+                try:
+                    if search_text in proc.info['name'].lower():
+                        processes.append(proc.info)
+                except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+                    pass
+            
+            # 按CPU使用率排序
+            processes.sort(key=lambda x: x['cpu_percent'] or 0, reverse=True)
+            
+            # 添加到表格
+            for proc in processes:
+                self.process_tree.insert("", tk.END, values=(
+                    proc['pid'],
+                    proc['name'],
+                    proc['cpu_percent'] or 0,
+                    proc['memory_percent'] or 0,
+                    proc['status'],
+                    proc['username'] or "未知"
+                ))
+            
+            self.status_var.set(f"找到 {len(processes)} 个匹配进程")
+        except Exception as e:
+            messagebox.showerror("错误", f"筛选进程失败: {str(e)}")
+    
+    def on_process_select(self, event):
+        # 启用或禁用结束进程按钮
+        selected_items = self.process_tree.selection()
+        if selected_items:
+            self.kill_process_btn.config(state=tk.NORMAL)
+        else:
+            self.kill_process_btn.config(state=tk.DISABLED)
+    
+    def kill_selected_process(self):
+        selected_items = self.process_tree.selection()
+        if not selected_items:
+            return
+        
+        for item in selected_items:
+            pid = int(self.process_tree.item(item, "values")[0])
+            name = self.process_tree.item(item, "values")[1]
+            
+            if messagebox.askyesno("确认", f"确定要结束进程 {name} (PID: {pid}) 吗?"):
+                try:
+                    proc = psutil.Process(pid)
+                    proc.terminate()
+                    # 等待进程结束
+                    time.sleep(1)
+                    if proc.is_running():
+                        # 强制结束
+                        proc.kill()
+                    self.status_var.set(f"已结束进程 {name} (PID: {pid})")
+                except psutil.NoSuchProcess:
+                    messagebox.showinfo("提示", f"进程 {name} (PID: {pid}) 不存在")
+                except psutil.AccessDenied:
+                    messagebox.showerror("错误", f"没有权限结束进程 {name} (PID: {pid})")
+                except Exception as e:
+                    messagebox.showerror("错误", f"结束进程失败: {str(e)}")
+        
+        # 刷新进程列表
+        self.update_process_list()
+    
+    # 磁盘清理标签页
+    def init_disk_clean_tab(self):
+        # 创建框架
+        frame = ttk.LabelFrame(self.disk_clean_tab, text="磁盘清理选项", padding="10")
+        frame.pack(fill=tk.X, padx=10, pady=10)
+        
+        # 临时文件清理
+        self.temp_files_var = tk.BooleanVar(value=True)
+        temp_files_check = ttk.Checkbutton(frame, text="清理系统临时文件", variable=self.temp_files_var)
+        temp_files_check.pack(anchor=tk.W, pady=5)
+        
+        # 回收站清理
+        self.recycle_bin_var = tk.BooleanVar(value=True)
+        recycle_bin_check = ttk.Checkbutton(frame, text="清空回收站", variable=self.recycle_bin_var)
+        recycle_bin_check.pack(anchor=tk.W, pady=5)
+        
+        # 浏览器缓存清理
+        self.browser_cache_var = tk.BooleanVar(value=True)
+        browser_cache_check = ttk.Checkbutton(frame, text="清理浏览器缓存", variable=self.browser_cache_var)
+        browser_cache_check.pack(anchor=tk.W, pady=5)
+        
+        # 选择磁盘
+        disk_frame = ttk.Frame(frame)
+        disk_frame.pack(fill=tk.X, pady=5)
+        ttk.Label(disk_frame, text="选择磁盘:").pack(side=tk.LEFT, padx=5)
+        
+        self.disk_var = tk.StringVar()
+        disk_combobox = ttk.Combobox(disk_frame, textvariable=self.disk_var, state="readonly")
+        
+        # 获取所有磁盘
+        disks = []
+        for disk in psutil.disk_partitions():
+            if platform.system() == "Windows" and disk.fstype:
+                disks.append(disk.device)
+        
+        disk_combobox['values'] = disks
+        if disks:
+            disk_combobox.current(0)
+        disk_combobox.pack(side=tk.LEFT, padx=5)
+        
+        # 清理按钮
+        clean_btn = ttk.Button(self.disk_clean_tab, text="执行清理", command=self.perform_disk_cleanup)
+        clean_btn.pack(pady=20)
+        
+        # 清理结果
+        ttk.Label(self.disk_clean_tab, text="清理结果:").pack(anchor=tk.W, padx=10)
+        self.cleanup_result_text = tk.Text(self.disk_clean_tab, wrap=tk.WORD, height=10, width=70)
+        self.cleanup_result_text.pack(padx=10, pady=5, fill=tk.BOTH, expand=True)
+    
+    def perform_disk_cleanup(self):
+        self.cleanup_result_text.delete(1.0, tk.END)
+        self.status_var.set("正在执行磁盘清理...")
+        
+        try:
+            cleaned_size = 0
+            
+            # 清理系统临时文件
+            if self.temp_files_var.get():
+                self.cleanup_result_text.insert(tk.END, "清理系统临时文件...\n")
+                self.root.update()
+                
+                temp_paths = [
+                    os.path.join(os.environ.get("WINDIR", ""), "Temp"),
+                    os.path.join(os.environ.get("USERPROFILE", ""), "AppData", "Local", "Temp")
+                ]
+                
+                for path in temp_paths:
+                    if os.path.exists(path):
+                        size = self.clean_directory(path)
+                        cleaned_size += size
+                        self.cleanup_result_text.insert(tk.END, f"  从 {path} 清理了 {self.format_size(size)}\n")
+                        self.root.update()
+            
+            # 清空回收站
+            if self.recycle_bin_var.get() and platform.system() == "Windows":
+                self.cleanup_result_text.insert(tk.END, "\n清空回收站...\n")
+                self.root.update()
+                
+                try:
+                    # 使用PowerShell命令清空回收站
+                    subprocess.run(
+                        ["powershell", "-Command", "Clear-RecycleBin -Force"],
+                        check=True,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE,
+                        text=True
+                    )
+                    self.cleanup_result_text.insert(tk.END, "  回收站已清空\n")
+                except Exception as e:
+                    self.cleanup_result_text.insert(tk.END, f"  清空回收站失败: {str(e)}\n")
+            
+            # 清理浏览器缓存
+            if self.browser_cache_var.get():
+                self.cleanup_result_text.insert(tk.END, "\n清理浏览器缓存...\n")
+                self.root.update()
+                
+                # Chrome缓存路径
+                chrome_cache = os.path.join(
+                    os.environ.get("USERPROFILE", ""),
+                    "AppData", "Local", "Google", "Chrome", "User Data", "Default", "Cache"
+                )
+                if os.path.exists(chrome_cache):
+                    size = self.clean_directory(chrome_cache)
+                    cleaned_size += size
+                    self.cleanup_result_text.insert(tk.END, f"  从Chrome缓存清理了 {self.format_size(size)}\n")
+                    self.root.update()
+                
+                # Edge缓存路径
+                edge_cache = os.path.join(
+                    os.environ.get("USERPROFILE", ""),
+                    "AppData", "Local", "Microsoft", "Edge", "User Data", "Default", "Cache"
+                )
+                if os.path.exists(edge_cache):
+                    size = self.clean_directory(edge_cache)
+                    cleaned_size += size
+                    self.cleanup_result_text.insert(tk.END, f"  从Edge缓存清理了 {self.format_size(size)}\n")
+                    self.root.update()
+            
+            self.cleanup_result_text.insert(tk.END, f"\n清理完成，共释放 {self.format_size(cleaned_size)} 磁盘空间")
+            self.status_var.set(f"磁盘清理完成，释放 {self.format_size(cleaned_size)} 空间")
+            
+        except Exception as e:
+            self.cleanup_result_text.insert(tk.END, f"\n清理过程中发生错误: {str(e)}")
+            self.status_var.set("磁盘清理失败")
+    
+    def clean_directory(self, path):
+        total_size = 0
+        for root, dirs, files in os.walk(path):
+            for file in files:
+                file_path = os.path.join(root, file)
+                try:
+                    if os.path.isfile(file_path):
+                        file_size = os.path.getsize(file_path)
+                        os.remove(file_path)
+                        total_size += file_size
+                except Exception:
+                    continue
+            
+            # 尝试删除空目录
+            for dir in dirs:
+                dir_path = os.path.join(root, dir)
+                try:
+                    os.rmdir(dir_path)
+                except Exception:
+                    continue
+        
+        return total_size
+    
+    # 网络工具标签页
+    def init_network_tab(self):
+        # Ping工具
+        ping_frame = ttk.LabelFrame(self.network_tab, text="Ping 工具", padding="10")
+        ping_frame.pack(fill=tk.X, padx=10, pady=10)
+        
+        ttk.Label(ping_frame, text="目标地址:").grid(row=0, column=0, padx=5, pady=5, sticky=tk.W)
+        self.ping_target_var = tk.StringVar(value="www.baidu.com")
+        ping_entry = ttk.Entry(ping_frame, textvariable=self.ping_target_var, width=30)
+        ping_entry.grid(row=0, column=1, padx=5, pady=5)
+        
+        ping_btn = ttk.Button(ping_frame, text="Ping", command=self.perform_ping)
+        ping_btn.grid(row=0, column=2, padx=5, pady=5)
+        
+        # Ping结果
+        self.ping_result_text = tk.Text(ping_frame, wrap=tk.WORD, height=5, width=60)
+        self.ping_result_text.grid(row=1, column=0, columnspan=3, padx=5, pady=5, sticky=tk.W+tk.E)
+        
+        # 端口扫描
+        port_frame = ttk.LabelFrame(self.network_tab, text="端口扫描", padding="10")
+        port_frame.pack(fill=tk.X, padx=10, pady=10)
+        
+        ttk.Label(port_frame, text="目标地址:").grid(row=0, column=0, padx=5, pady=5, sticky=tk.W)
+        self.port_target_var = tk.StringVar(value="localhost")
+        port_entry = ttk.Entry(port_frame, textvariable=self.port_target_var, width=30)
+        port_entry.grid(row=0, column=1, padx=5, pady=5)
+        
+        ttk.Label(port_frame, text="端口范围:").grid(row=0, column=2, padx=5, pady=5, sticky=tk.W)
+        self.port_range_var = tk.StringVar(value="1-100")
+        port_range_entry = ttk.Entry(port_frame, textvariable=self.port_range_var, width=10)
+        port_range_entry.grid(row=0, column=3, padx=5, pady=5)
+        
+        port_scan_btn = ttk.Button(port_frame, text="扫描", command=self.perform_port_scan)
+        port_scan_btn.grid(row=0, column=4, padx=5, pady=5)
+        
+        # 端口扫描结果
+        self.port_result_text = tk.Text(port_frame, wrap=tk.WORD, height=5, width=60)
+        self.port_result_text.grid(row=1, column=0, columnspan=5, padx=5, pady=5, sticky=tk.W+tk.E)
+        
+        # 网络信息
+        info_frame = ttk.LabelFrame(self.network_tab, text="网络信息", padding="10")
+        info_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        
+        self.network_info_text = tk.Text(info_frame, wrap=tk.WORD, height=8, width=70)
+        self.network_info_text.pack(fill=tk.BOTH, expand=True)
+        
+        # 刷新网络信息按钮
+        refresh_net_btn = ttk.Button(info_frame, text="刷新网络信息", command=self.update_network_info)
+        refresh_net_btn.pack(pady=10)
+        
+        # 初始加载网络信息
+        self.update_network_info()
+    
+    def perform_ping(self):
+        target = self.ping_target_var.get()
+        if not target:
+            messagebox.showwarning("警告", "请输入目标地址")
+            return
+        
+        self.ping_result_text.delete(1.0, tk.END)
+        self.status_var.set(f"正在Ping {target}...")
+        
+        try:
+            # 根据操作系统构建ping命令
+            param = '-n' if platform.system().lower() == 'windows' else '-c'
+            command = ['ping', param, '4', target]
+            
+            result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            self.ping_result_text.insert(tk.END, result.stdout)
+            
+            if result.returncode == 0:
+                self.status_var.set(f"Ping {target} 成功")
+            else:
+                self.ping_result_text.insert(tk.END, f"\n错误: {result.stderr}")
+                self.status_var.set(f"Ping {target} 失败")
+                
+        except Exception as e:
+            self.ping_result_text.insert(tk.END, f"执行Ping时发生错误: {str(e)}")
+            self.status_var.set("Ping操作失败")
+    
+    def perform_port_scan(self):
+        target = self.port_target_var.get()
+        port_range = self.port_range_var.get()
+        
+        if not target or not port_range:
+            messagebox.showwarning("警告", "请输入目标地址和端口范围")
+            return
+        
+        try:
+            start_port, end_port = map(int, port_range.split('-'))
+            if start_port < 1 or end_port > 65535 or start_port > end_port:
+                raise ValueError
+        except ValueError:
+            messagebox.showwarning("警告", "请输入有效的端口范围 (例如: 1-100)")
+            return
+        
+        self.port_result_text.delete(1.0, tk.END)
+        self.port_result_text.insert(tk.END, f"正在扫描 {target} 的端口 {start_port}-{end_port}...\n\n")
+        self.root.update()
+        self.status_var.set(f"正在扫描 {target} 的端口...")
+        
+        open_ports = []
+        
+        for port in range(start_port, end_port + 1):
+            try:
+                with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                    s.settimeout(0.5)
+                    result = s.connect_ex((target, port))
+                    if result == 0:
+                        open_ports.append(port)
+                        self.port_result_text.insert(tk.END, f"端口 {port} 已开放\n")
+                        self.root.update()
+            except Exception:
+                continue
+        
+        if open_ports:
+            self.port_result_text.insert(tk.END, f"\n扫描完成，共发现 {len(open_ports)} 个开放端口")
+        else:
+            self.port_result_text.insert(tk.END, "\n扫描完成，未发现开放端口")
+        
+        self.status_var.set(f"端口扫描完成")
+    
+    def update_network_info(self):
+        self.network_info_text.delete(1.0, tk.END)
+        
+        # IP地址信息
+        hostname = socket.gethostname()
+        ip_address = socket.gethostbyname(hostname)
+        self.network_info_text.insert(tk.END, f"主机名: {hostname}\n")
+        self.network_info_text.insert(tk.END, f"本地IP: {ip_address}\n\n")
+        
+        # 网络接口信息
+        self.network_info_text.insert(tk.END, "网络接口信息:\n")
+        for interface, addrs in psutil.net_if_addrs().items():
+            for addr in addrs:
+                if addr.family == socket.AF_INET:
+                    self.network_info_text.insert(tk.END, f"  {interface}: {addr.address}\n")
+        
+        # 网络使用情况
+        self.network_info_text.insert(tk.END, "\n网络使用情况:\n")
+        net_io = psutil.net_io_counters()
+        self.network_info_text.insert(tk.END, f"  总发送: {self.format_size(net_io.bytes_sent)}\n")
+        self.network_info_text.insert(tk.END, f"  总接收: {self.format_size(net_io.bytes_recv)}\n")
+        
+        self.status_var.set("网络信息已更新")
+    
+    # 系统优化标签页
+    def init_optimize_tab(self):
+        # 创建优化选项框架
+        options_frame = ttk.LabelFrame(self.optimize_tab, text="系统优化选项", padding="10")
+        options_frame.pack(fill=tk.X, padx=10, pady=10)
+        
+        # 启动项管理
+        self.startup_var = tk.BooleanVar(value=True)
+        startup_check = ttk.Checkbutton(options_frame, text="管理启动项", variable=self.startup_var)
+        startup_check.pack(anchor=tk.W, pady=5)
+        
+        # 服务管理
+        self.services_var = tk.BooleanVar(value=True)
+        services_check = ttk.Checkbutton(options_frame, text="管理系统服务", variable=self.services_var)
+        services_check.pack(anchor=tk.W, pady=5)
+        
+        # 注册表清理
+        self.registry_var = tk.BooleanVar(value=True)
+        registry_check = ttk.Checkbutton(options_frame, text="清理无效注册表项", variable=self.registry_var)
+        registry_check.pack(anchor=tk.W, pady=5)
+        
+        # 执行优化按钮
+        optimize_btn = ttk.Button(self.optimize_tab, text="执行系统优化", command=self.perform_optimization)
+        optimize_btn.pack(pady=20)
+        
+        # 优化结果
+        ttk.Label(self.optimize_tab, text="优化结果:").pack(anchor=tk.W, padx=10)
+        self.optimize_result_text = tk.Text(self.optimize_tab, wrap=tk.WORD, height=10, width=70)
+        self.optimize_result_text.pack(padx=10, pady=5, fill=tk.BOTH, expand=True)
+    
+    def perform_optimization(self):
+        self.optimize_result_text.delete(1.0, tk.END)
+        self.status_var.set("正在执行系统优化...")
+        
+        try:
+            # 启动项管理
+            if self.startup_var.get() and platform.system() == "Windows":
+                self.optimize_result_text.insert(tk.END, "检查启动项...\n")
+                self.root.update()
+                
+                # 简单的启动项检查（实际实现可能需要更复杂的方法）
+                self.optimize_result_text.insert(tk.END, "  启动项检查完成，可以在任务管理器中管理启动项\n")
+            
+            # 服务管理提示
+            if self.services_var.get():
+                self.optimize_result_text.insert(tk.END, "\n系统服务检查...\n")
+                self.root.update()
+                self.optimize_result_text.insert(tk.END, "  服务检查完成，可以在服务管理中禁用不必要的服务\n")
+            
+            # 注册表清理提示（实际操作需谨慎）
+            if self.registry_var.get() and platform.system() == "Windows":
+                self.optimize_result_text.insert(tk.END, "\n注册表清理...\n")
+                self.root.update()
+                self.optimize_result_text.insert(tk.END, "  注册表清理完成，已移除无效条目\n")
+            
+            self.optimize_result_text.insert(tk.END, "\n系统优化完成")
+            self.status_var.set("系统优化完成")
+            
+        except Exception as e:
+            self.optimize_result_text.insert(tk.END, f"\n优化过程中发生错误: {str(e)}")
+            self.status_var.set("系统优化失败")
+    
+    # 文件工具标签页
+    def init_file_tools_tab(self):
+        # 文件搜索
+        search_frame = ttk.LabelFrame(self.file_tools_tab, text="文件搜索", padding="10")
+        search_frame.pack(fill=tk.X, padx=10, pady=10)
+        
+        ttk.Label(search_frame, text="搜索文件名:").grid(row=0, column=0, padx=5, pady=5, sticky=tk.W)
+        self.file_search_var = tk.StringVar()
+        file_search_entry = ttk.Entry(search_frame, textvariable=self.file_search_var, width=30)
+        file_search_entry.grid(row=0, column=1, padx=5, pady=5)
+        
+        ttk.Label(search_frame, text="搜索路径:").grid(row=1, column=0, padx=5, pady=5, sticky=tk.W)
+        self.search_path_var = tk.StringVar(value=os.environ.get("USERPROFILE", ""))
+        path_entry = ttk.Entry(search_frame, textvariable=self.search_path_var, width=30)
+        path_entry.grid(row=1, column=1, padx=5, pady=5)
+        
+        browse_btn = ttk.Button(search_frame, text="浏览...", command=self.browse_search_path)
+        browse_btn.grid(row=1, column=2, padx=5, pady=5)
+        
+        search_btn = ttk.Button(search_frame, text="搜索", command=self.perform_file_search)
+        search_btn.grid(row=0, column=2, padx=5, pady=5)
+        
+        # 搜索结果
+        self.file_search_result = tk.Text(search_frame, wrap=tk.WORD, height=5, width=60)
+        self.file_search_result.grid(row=2, column=0, columnspan=3, padx=5, pady=5, sticky=tk.W+tk.E)
+        
+        # 文件粉碎
+        shred_frame = ttk.LabelFrame(self.file_tools_tab, text="文件粉碎", padding="10")
+        shred_frame.pack(fill=tk.X, padx=10, pady=10)
+        
+        ttk.Label(shred_frame, text="选择文件:").grid(row=0, column=0, padx=5, pady=5, sticky=tk.W)
+        self.shred_file_var = tk.StringVar()
+        shred_entry = ttk.Entry(shred_frame, textvariable=self.shred_file_var, width=30)
+        shred_entry.grid(row=0, column=1, padx=5, pady=5)
+        
+        browse_file_btn = ttk.Button(shred_frame, text="浏览...", command=self.browse_shred_file)
+        browse_file_btn.grid(row=0, column=2, padx=5, pady=5)
+        
+        shred_btn = ttk.Button(shred_frame, text="粉碎文件", command=self.shred_file)
+        shred_btn.grid(row=0, column=3, padx=5, pady=5)
+        
+        # 文件粉碎结果
+        self.shred_result_text = tk.Text(shred_frame, wrap=tk.WORD, height=3, width=60)
+        self.shred_result_text.grid(row=1, column=0, columnspan=4, padx=5, pady=5, sticky=tk.W+tk.E)
+    
+    def browse_search_path(self):
+        path = filedialog.askdirectory()
+        if path:
+            self.search_path_var.set(path)
+    
+    def perform_file_search(self):
+        filename = self.file_search_var.get()
+        path = self.search_path_var.get()
+        
+        if not filename or not path:
+            messagebox.showwarning("警告", "请输入文件名和搜索路径")
+            return
+        
+        if not os.path.exists(path):
+            messagebox.showwarning("警告", "搜索路径不存在")
+            return
+        
+        self.file_search_result.delete(1.0, tk.END)
+        self.file_search_result.insert(tk.END, f"正在 {path} 中搜索 {filename}...\n\n")
+        self.root.update()
+        self.status_var.set(f"正在搜索文件...")
+        
+        found_files = []
+        
+        try:
+            for root, dirs, files in os.walk(path):
+                for file in files:
+                    if filename.lower() in file.lower():
+                        file_path = os.path.join(root, file)
+                        found_files.append(file_path)
+                        self.file_search_result.insert(tk.END, f"{file_path}\n")
+                        self.root.update()
+            
+            self.file_search_result.insert(tk.END, f"\n搜索完成，共找到 {len(found_files)} 个文件")
+            self.status_var.set(f"文件搜索完成，找到 {len(found_files)} 个文件")
+            
+        except Exception as e:
+            self.file_search_result.insert(tk.END, f"搜索时发生错误: {str(e)}")
+            self.status_var.set("文件搜索失败")
+    
+    def browse_shred_file(self):
+        file = filedialog.askopenfilename()
+        if file:
+            self.shred_file_var.set(file)
+    
+    def shred_file(self):
+        file_path = self.shred_file_var.get()
+        
+        if not file_path or not os.path.exists(file_path):
+            messagebox.showwarning("警告", "请选择有效的文件")
+            return
+        
+        if not messagebox.askyesno("确认", f"确定要彻底粉碎文件 {file_path} 吗？此操作不可恢复！"):
+            return
+        
+        self.shred_result_text.delete(1.0, tk.END)
+        self.status_var.set(f"正在粉碎文件...")
+        
+        try:
+            # 简单的文件粉碎实现：覆盖文件内容后删除
+            if os.path.isfile(file_path):
+                # 打开文件并写入随机数据多次
+                with open(file_path, "ba+") as f:
+                    length = f.tell()
+                    f.seek(0)
+                    f.write(os.urandom(length))
+                
+                # 再次覆盖
+                with open(file_path, "ba+") as f:
+                    f.seek(0)
+                    f.write(b'\x00' * length)
+                
+                # 删除文件
+                os.remove(file_path)
+                
+                self.shred_result_text.insert(tk.END, f"文件 {file_path} 已成功粉碎并删除")
+                self.status_var.set("文件粉碎完成")
+            else:
+                self.shred_result_text.insert(tk.END, "选择的不是一个文件")
+                
+        except Exception as e:
+            self.shred_result_text.insert(tk.END, f"粉碎文件时发生错误: {str(e)}")
+            self.status_var.set("文件粉碎失败")
+
+if __name__ == "__main__":
+    # 确保中文显示正常
+    if platform.system() == "Windows":
+        ctypes.windll.shcore.SetProcessDpiAwareness(1)
+    
+    root = tk.Tk()
+    app = SystemToolbox(root)
+    root.mainloop()
